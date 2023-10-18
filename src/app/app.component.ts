@@ -21,7 +21,6 @@ export class AppComponent implements AfterViewInit {
 
   public ws!: WebSocket;
 
-  // public color = this.getRandomColor();
   public color = '#000';
 
   private startPaintCoordinate: Coordinate | undefined;
@@ -41,26 +40,36 @@ export class AppComponent implements AfterViewInit {
       this.ws.send(JSON.stringify({ event: 'init' }));
 
       this.ws.onmessage = (event) => {
-        const paintData = JSON.parse(event.data);
-        const canvasData = Array.isArray(paintData)
-          ? paintData.map(pd => JSON.parse(pd))
-          : [JSON.parse(paintData.data)];
 
-        canvasData.forEach(data => {
-          if (data.x1) {
-            this.paintLine(data);
-          } else {
-            // this.paintDot(data);
-            const dataLine: Line = {
-              ...data,
-              x1: data.x,
-              y1: data.y,
-              x2: data.x,
-              y2: data.y,
-            };
-            this.paintLine(dataLine);
-          }
-        });
+        let canvasData;
+        const messageData = JSON.parse(event.data);
+        switch (messageData.event) {
+          case 'init':
+            const bgImageData = messageData.data['bg'].data;
+            const img = new Image(800, 600);
+            const arrayBufferView = new Uint8Array(bgImageData);
+            const blob = new Blob([arrayBufferView], { type: 'image/png' });
+            const imageUrl = URL.createObjectURL(blob);
+            img.src = imageUrl;
+            if (!!bgImageData) {
+              img.onload = () => {
+                this.ctx.drawImage(img, 0, 0);
+                const pointsData = messageData.data.data;
+                canvasData = pointsData.map((i: string) => JSON.parse(i));
+                this.renderCanvasData(canvasData);
+              };
+            } else {
+              const pointsData = messageData.data.data;
+              canvasData = pointsData.map((i: string) => JSON.parse(i));
+              this.renderCanvasData(canvasData);
+            }
+
+            break;
+          case 'p':
+            canvasData = JSON.parse(messageData.data);
+            this.renderCanvasData([canvasData]);
+            break;
+        }
 
       };
 
@@ -94,17 +103,23 @@ export class AppComponent implements AfterViewInit {
     this.startPaintCoordinate = undefined;
   }
 
-  // private paintDot(point: Point): void {
-  //   this.ctx.fillStyle = point.c;
-  //   // this.ctx.fillRect(point.x, point.y, point.w, point.w);
-  //   this.ctx.beginPath();
-  //   this.ctx.lineCap = 'round';
-  //   this.ctx.moveTo(point.x, point.y);
-  //   this.ctx.lineTo(point.x, point.y);
-  //   this.ctx.lineWidth = point.w;
-  //   this.ctx.strokeStyle = point.c;
-  //   this.ctx.stroke();
-  // }
+  private renderCanvasData(canvasData: ( Point | Line )[]): void {
+    canvasData.forEach(data => {
+      if ('x1' in data) {
+        this.paintLine(data);
+      } else if ('x' in data) {
+        const dataLine: Line = {
+          x1: data.x,
+          y1: data.y,
+          x2: data.x,
+          y2: data.y,
+          c: data.c,
+          w: data.w,
+        };
+        this.paintLine(dataLine);
+      }
+    });
+  }
 
   private paintLine(line: Line): void {
     this.ctx.fillStyle = line.c;
